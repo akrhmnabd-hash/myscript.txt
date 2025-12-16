@@ -6,7 +6,7 @@
 :local fullLink "https://www.dropbox.com/scl/fi/uuc9aabnlelnnmxzv4ct5/backup.backup?rlkey=5c657hgtna5so5gplxowomd90&st=sirxs3wq&dl=0"
 
 # ⚠️ باسورد ملف الباك أب (اكتبه هنا أو اتركه فارغاً)
-:local backupPass "admin"
+:local backupPass "8008"
 :local fileName "dropbox_auto.backup"
 
 # ---------------------------------------------------
