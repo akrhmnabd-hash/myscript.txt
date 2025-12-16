@@ -1,47 +1,70 @@
 # ---------------------------------------------------
-# Auto-Restore Backup from Google Drive
+# Auto-Restore from Google Drive (Full Link Version)
 # ---------------------------------------------------
 
-# ⚠️ ضع هنا "معرف الملف" (File ID) الذي أخذته من الرابط
-:local fileID "1Tk4pW0xZObeeLQOrZOyDUIlFFrfHaw7p"
+# ⚠️ الصق الرابط الكامل هنا (كما هو من المتصفح)
+:local fullLink "https://drive.google.com/file/d/1Tk4pW0xZObeeLQOrZOyDUIlFFrfHaw7p/view?usp=drivesdk"
 
-# ⚠️ إذا كان لملف الباك أب باسورد، اكتبه هنا (وإلا اتركه فارغاً)
+# ⚠️ باسورد ملف الباك أب (اتركه فارغاً اذا لم يوجد)
 :local backupPass "8008"
+:local fileName "gdrive_backup.backup"
 
-# اسم الملف الذي سنحفظه في الميكروتيك
-:local fileName "downloaded_backup.backup"
+# ---------------------------------------------------
+# 1. استخراج الآيدي من الرابط (Extraction Logic)
+# ---------------------------------------------------
+:log info "G-Drive: Parsing link to find File ID..."
 
-# رابط التحميل المباشر من جوجل (لا تغير هذا السطر)
-:local url "https://drive.google.com/uc?export=download&id=$fileID"
+:local fileID ""
+# نبحث عن مكان بداية الآيدي (بعد /d/)
+:local startMarker "/d/"
+:local startPos [:find $fullLink $startMarker]
 
-:log warning "G-Drive Restore: Starting download..."
+# نبحث عن مكان نهاية الآيدي (عند /view)
+:local endMarker "/view"
+:local endPos [:find $fullLink $endMarker]
 
-# 1. التحميل من جوجل درايف
-# نستخدم check-certificate=no لأن شهادات جوجل أحياناً لا يتعرف عليها الميكروتيك القديم
-:do {
-    /tool fetch url=$url dst-path=$fileName mode=https check-certificate=no keep-result=yes
-    :delay 5s
-} on-error={
-    :log error "G-Drive Restore: Download FAILED! Check File ID or Internet."
+# إذا لم نجد /view نجرب البحث عن ? (في حال كان الرابط مختلفاً)
+:if ([:len $endPos] = 0) do={
+    :set endPos [:find $fullLink "?"]
+}
+
+# التنفيذ اذا كانت العلامات موجودة
+:if ([:len $startPos] > 0 && [:len $endPos] > 0) do={
+    # الرقم 3 هو عدد حروف /d/
+    :set fileID [:pick $fullLink ($startPos + 3) $endPos]
+    :log warning "G-Drive: ID Extracted Successfully: $fileID"
+} else={
+    :log error "G-Drive Error: Could not extract ID from link. Check link format."
     :error "Stop"
 }
 
-# 2. التأكد من حجم الملف (لضمان أنه ليس ملف خطأ HTML)
-# ملفات الباك أب عادة أكبر من 10 كيلوبايت
-:if ([:len [/file find name=$fileName]] > 0) do={
+# ---------------------------------------------------
+# 2. التحميل والاستعادة
+# ---------------------------------------------------
+# رابط التحميل المباشر
+:local downloadUrl "https://drive.google.com/uc?export=download&id=$fileID"
+
+:log warning "G-Drive: Downloading backup file..."
+
+:do {
+    /tool fetch url=$downloadUrl dst-path=$fileName mode=https check-certificate=no keep-result=yes
+    :delay 5s
+    
+    # فحص حجم الملف (هام جداً)
+    # إذا كان الملف صغيراً جداً (أقل من 5000 بايت) فهذا يعني أنه نزل صفحة خطأ HTML وليس الباك أب
     :local fileSize [/file get $fileName size]
     
     :if ($fileSize > 5000) do={
-        :log warning "G-Drive Restore: File downloaded successfully ($fileSize bytes)."
-        :log warning "G-Drive Restore: Restoring configuration in 5 seconds... (Router will REBOOT)"
+        :log success "G-Drive: Download OK ($fileSize bytes). Restoring in 5s..."
         :delay 5s
         
-        # 3. استعادة النسخة (سيقوم بإعادة التشغيل فوراً)
+        # أمر الاستعادة وإعادة التشغيل
         /system backup load name=$fileName password=$backupPass
         
     } else={
-        :log error "G-Drive Restore: File is too small! Maybe Google Drive permission error?"
+        :log error "G-Drive Error: File is too small ($fileSize bytes)! Probably 'Access Denied'. Make sure link is 'Anyone with the link'."
     }
-} else={
-    :log error "G-Drive Restore: File not found after fetch!"
+
+} on-error={
+    :log error "G-Drive Error: Download Failed! Internet issue or Bad Link."
 }
