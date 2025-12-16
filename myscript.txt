@@ -1,75 +1,63 @@
 # ---------------------------------------------------
-# Auto-Restore from Dropbox (Full Link Version)
+# Auto-Restore from Dropbox (V2 - Supports rlkey)
 # ---------------------------------------------------
 
-# ⚠️ الصق رابط Dropbox الكامل هنا (كما نسخته من التطبيق/المتصفح)
+# ⚠️ الصق رابط Dropbox الكامل هنا (كما هو من المتصفح)
 :local fullLink "https://www.dropbox.com/scl/fi/uuc9aabnlelnnmxzv4ct5/backup.backup?rlkey=5c657hgtna5so5gplxowomd90&st=sirxs3wq&dl=0"
 
 # ⚠️ باسورد ملف الباك أب (اكتبه هنا أو اتركه فارغاً)
 :local backupPass "8008"
-:local fileName "dropbox_auto.backup"
+:local fileName "dropbox_v2.backup"
 
 # ---------------------------------------------------
-# 1. التعديل السحري للرابط (Magic Link Modifier)
+# 1. المعالجة الذكية للرابط
 # ---------------------------------------------------
-:log info "Dropbox-Magic: Processing link..."
+:log info "Dropbox-V2: Processing link..."
 
+# المتغير الذي سيحمل الرابط النهائي
 :local directLink ""
-:local pathStart [:find $fullLink "/s/"]
 
-# هل الرابط يحتوي على /s/ (علامة روابط دروب بوكس)؟
+# نبحث عن بداية المسار (عادة يبدأ بـ /s/ أو /scl/)
+:local pathStart [:find $fullLink ".com/"]
+
 :if ([:len $pathStart] > 0) do={
     
-    # 1. استخراج المسار فقط (من عند /s/ إلى النهاية)
-    :local rawPath [:pick $fullLink $pathStart [:len $fullLink]]
+    # نأخذ كل شيء يأتي بعد .com
+    # الرقم 4 هو عدد حروف .com
+    :local restOfUrl [:pick $fullLink ($pathStart + 4) [:len $fullLink]]
     
-    # 2. تنظيف المسار من الزوائد مثل ?dl=0
-    :local queryStart [:find $rawPath "?"]
-    :local cleanPath ""
+    # نقوم بدمج الدومين المباشر مع باقي الرابط
+    :set directLink ("https://dl.dropboxusercontent.com" . $restOfUrl)
     
-    :if ([:len $queryStart] > 0) do={
-        # قص الرابط قبل علامة الاستفهام
-        :set cleanPath [:pick $rawPath 0 $queryStart]
-    } else={
-        # الرابط نظيف أصلاً
-        :set cleanPath $rawPath
-    }
-    
-    # 3. بناء الرابط المباشر الجديد
-    # نستبدل الدومين القديم بـ dl.dropboxusercontent.com
-    :set directLink ("https://dl.dropboxusercontent.com" . $cleanPath)
-    
-    :log warning "Dropbox-Magic: Link Converted Successfully!"
-    # :log info ("New Link: " . $directLink)
-
+    :log warning "Dropbox-V2: Link Converted! Downloading..."
 } else={
-    :log error "Dropbox Error: Invalid Link Format! Link must contain '/s/'."
+    :log error "Dropbox Error: Invalid Link! Must contain '.com/'"
     :error "Stop"
 }
 
 # ---------------------------------------------------
 # 2. التحميل والاستعادة
 # ---------------------------------------------------
-:log warning "Dropbox: Downloading backup..."
-
 :do {
+    # نستخدم mode=https للتوافق مع دروب بوكس
     /tool fetch url=$directLink dst-path=$fileName mode=https check-certificate=no keep-result=yes
-    :delay 5s
+    :delay 8s
     
-    # فحص الحجم للتأكد
+    # فحص الحجم (للتأكد أننا لم نحمل صفحة خطأ)
     :local fileSize [/file get $fileName size]
     
-    :if ($fileSize > 5000) do={
-        :log success "Dropbox: Download Success ($fileSize bytes). Restoring in 5s..."
+    # ملف الباك أب الحقيقي عادة أكبر من 10 كيلو بايت
+    :if ($fileSize > 10000) do={
+        :log success "Dropbox: Download Success ($fileSize bytes). System will REBOOT in 5s..."
         :delay 5s
         
         # الاستعادة
         /system backup load name=$fileName password=$backupPass
         
     } else={
-        :log error "Dropbox Error: File too small! Check if link is valid."
+        :log error "Dropbox Error: File is too small ($fileSize bytes)! Probably Access Denied. Check 'rlkey' in link."
     }
 
 } on-error={
-    :log error "Dropbox Error: Download Failed! Check Internet."
+    :log error "Dropbox Error: Download Failed! Check Internet or Link format."
 }
